@@ -202,7 +202,7 @@ export default class NeonSwarmGame implements IGame {
 
   private nextLevel(): void {
     this.level++;
-    this.levelCompleteTimer = 1.5;
+    this.levelCompleteTimer = 2.0;
     // Add extra nodes
     const extraNodes = 5 + this.level * 2;
     let placed = 0;
@@ -255,7 +255,7 @@ export default class NeonSwarmGame implements IGame {
   private playerHit(): void {
     this.lives--;
     this.hitFlash = 0.5;
-    this.respawnTimer = 1.0;
+    this.respawnTimer = 1.5;
     this.spawnParticles(this.playerX, this.playerY, CYAN, 20);
     audio.lose();
     if (this.lives <= 0) {
@@ -600,12 +600,29 @@ export default class NeonSwarmGame implements IGame {
     if (this.levelCompleteTimer > 0) {
       const alpha = Math.min(1, this.levelCompleteTimer * 2);
       ctx.globalAlpha = alpha;
-      ctx.fillStyle = ACCENT;
-      ctx.font = 'bold 20px monospace';
+      ctx.fillStyle = GREEN;
+      ctx.font = 'bold 24px monospace';
       ctx.textAlign = 'center';
-      ctx.shadowColor = ACCENT;
+      ctx.shadowColor = GREEN;
       ctx.shadowBlur = 20;
-      ctx.fillText(`LEVEL ${this.level}`, W / 2, H / 2);
+      ctx.fillText('WAVE CLEARED!', W / 2, H / 2 - 10);
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = ACCENT_GLOW;
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText(`WAVE ${this.level}`, W / 2, H / 2 + 18);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    if (this.respawnTimer > 0 && this.lives > 0) {
+      const alpha = Math.min(1, this.respawnTimer * 2);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = RED;
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = RED;
+      ctx.shadowBlur = 15;
+      ctx.fillText('RESPAWNING...', W / 2, H / 2);
       ctx.shadowBlur = 0;
       ctx.globalAlpha = 1;
     }
@@ -639,10 +656,20 @@ export default class NeonSwarmGame implements IGame {
       ctx.fillText('PRESS SPACE TO START', W / 2, H / 2 + 30);
     }
 
-    // Controls
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    // Controls help box
+    const boxW = 320;
+    const boxH = 36;
+    const boxX = (W - boxW) / 2;
+    const boxY = H / 2 + 44;
+    ctx.strokeStyle = 'rgba(139,92,246,0.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(10,10,26,0.7)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(255,255,255,0.5)';
     ctx.font = '10px monospace';
-    ctx.fillText('ARROWS: MOVE  |  SPACE: SHOOT  |  ENTER: PAUSE', W / 2, H / 2 + 60);
+    ctx.fillText('LEFT/RIGHT = Move | SPACE = Shoot (auto-fire)', W / 2, boxY + 14);
+    ctx.fillText('ENTER = Pause', W / 2, boxY + 28);
 
     // Decorative virus preview
     const vx = W / 2 - 5 * CELL;

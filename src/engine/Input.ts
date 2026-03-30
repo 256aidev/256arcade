@@ -31,16 +31,50 @@ export class InputManager {
   }
 
   update() {
-    this.state.up = this.keys.has('ArrowUp') || this.keys.has('KeyW');
-    this.state.down = this.keys.has('ArrowDown') || this.keys.has('KeyS');
-    this.state.left = this.keys.has('ArrowLeft') || this.keys.has('KeyA');
-    this.state.right = this.keys.has('ArrowRight') || this.keys.has('KeyD');
-    this.state.action1 = this.keys.has('Space') || this.keys.has('KeyZ');
-    this.state.action2 = this.keys.has('KeyX') || this.keys.has('ShiftLeft');
-    this.state.start = this.keys.has('Enter') || this.keys.has('Escape');
+    // Keyboard
+    const kUp = this.keys.has('ArrowUp') || this.keys.has('KeyW');
+    const kDown = this.keys.has('ArrowDown') || this.keys.has('KeyS');
+    const kLeft = this.keys.has('ArrowLeft') || this.keys.has('KeyA');
+    const kRight = this.keys.has('ArrowRight') || this.keys.has('KeyD');
+    const kAction1 = this.keys.has('Space') || this.keys.has('KeyZ');
+    const kAction2 = this.keys.has('KeyX') || this.keys.has('ShiftLeft');
+    const kStart = this.keys.has('Enter') || this.keys.has('Escape');
+
+    // Gamepad
+    let gUp = false, gDown = false, gLeft = false, gRight = false;
+    let gAction1 = false, gAction2 = false, gStart = false;
+
+    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const gp of gamepads) {
+      if (!gp) continue;
+      // D-pad buttons (standard mapping: 12=up, 13=down, 14=left, 15=right)
+      if (gp.buttons[12]?.pressed) gUp = true;
+      if (gp.buttons[13]?.pressed) gDown = true;
+      if (gp.buttons[14]?.pressed) gLeft = true;
+      if (gp.buttons[15]?.pressed) gRight = true;
+      // Face buttons: A/Cross=0, B/Circle=1, X/Square=2, Y/Triangle=3
+      if (gp.buttons[0]?.pressed) gAction1 = true;   // A = action1 (jump/shoot/thrust)
+      if (gp.buttons[2]?.pressed) gAction2 = true;   // X = action2 (kick/switch/interact)
+      if (gp.buttons[1]?.pressed) gAction2 = true;   // B = also action2
+      if (gp.buttons[9]?.pressed) gStart = true;     // Start
+      if (gp.buttons[8]?.pressed) gStart = true;     // Select/Back
+      // Left stick (deadzone 0.3)
+      if (gp.axes[0] < -0.3) gLeft = true;
+      if (gp.axes[0] > 0.3) gRight = true;
+      if (gp.axes[1] < -0.3) gUp = true;
+      if (gp.axes[1] > 0.3) gDown = true;
+    }
+
+    // Combine all input sources
+    this.state.up = kUp || gUp;
+    this.state.down = kDown || gDown;
+    this.state.left = kLeft || gLeft;
+    this.state.right = kRight || gRight;
+    this.state.action1 = kAction1 || gAction1;
+    this.state.action2 = kAction2 || gAction2;
+    this.state.start = kStart || gStart;
   }
 
-  // For games that need raw touch positions
   getTouches(): Map<number, { x: number; y: number }> {
     return this.touches;
   }
@@ -51,7 +85,6 @@ export class InputManager {
 
   private onKeyDown = (e: KeyboardEvent) => {
     this.keys.add(e.code);
-    // Prevent scrolling with arrow keys/space
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
       e.preventDefault();
     }
@@ -98,9 +131,6 @@ export class InputManager {
   }
 
   private updateTouchState() {
-    // Simple touch zones: left third = left, right third = right,
-    // top half = up/action1, bottom half = down
-    // Any touch = action1
     this.state.action1 = this.touches.size > 0;
     this.state.left = false;
     this.state.right = false;

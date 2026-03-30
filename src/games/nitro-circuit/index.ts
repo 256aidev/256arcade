@@ -123,6 +123,10 @@ export default class NitroCircuitGame implements IGame {
   private countdownTimer = 0;
   private countdownValue = 0;
   private raceStarted = false;
+  private lapMessage = '';
+  private lapMessageTimer = 0;
+  private raceEndTimer = 0;
+  private raceEndPending = false;
 
   // ── Interface Methods ──────────────────────────────────────────────
 
@@ -201,6 +205,8 @@ export default class NitroCircuitGame implements IGame {
     } else {
       this.renderRoad(ctx);
       this.renderHUD(ctx);
+      if (this.lapMessageTimer > 0) this.renderLapMessage(ctx);
+      if (this.raceEndPending) this.renderRaceEndOverlay(ctx);
       if (!this.raceStarted) this.renderCountdown(ctx);
       if (this.state === 'paused') this.renderPaused(ctx);
     }
@@ -338,6 +344,10 @@ export default class NitroCircuitGame implements IGame {
     this.countdownTimer = 0;
     this.countdownValue = 3;
     this.raceStarted = false;
+    this.lapMessage = '';
+    this.lapMessageTimer = 0;
+    this.raceEndTimer = 0;
+    this.raceEndPending = false;
 
     // Spawn AI cars
     this.aiCars = [];
@@ -417,6 +427,8 @@ export default class NitroCircuitGame implements IGame {
         this.finishRace();
         return;
       }
+      this.lapMessage = `LAP ${this.lap} COMPLETE!`;
+      this.lapMessageTimer = 1.5;
       this.lap++;
       this.lapTime = 0;
       audio.playTone(660, 0.15, 'square');
@@ -502,10 +514,21 @@ export default class NitroCircuitGame implements IGame {
     this.lapTime += dt;
     this.totalTime += dt;
     this.shakeTimer = Math.max(0, this.shakeTimer - dt);
+    if (this.lapMessageTimer > 0) this.lapMessageTimer -= dt;
+
+    if (this.raceEndPending) {
+      this.raceEndTimer -= dt;
+      if (this.raceEndTimer <= 0) {
+        this.raceEndPending = false;
+        this.state = 'gameover';
+      }
+      return;
+    }
 
     if (this.lapTime >= LAP_TIME_LIMIT) {
       this.timeUp = true;
-      this.state = 'gameover';
+      this.raceEndPending = true;
+      this.raceEndTimer = 3;
       audio.lose();
     }
   }
@@ -516,7 +539,10 @@ export default class NitroCircuitGame implements IGame {
     const avgLap = this.totalTime / LAP_COUNT;
     const timeBonus = Math.max(0, Math.floor((LAP_TIME_LIMIT - avgLap) * 100));
     this.score += timeBonus;
-    this.state = 'gameover';
+    this.raceEndPending = true;
+    this.raceEndTimer = 3;
+    this.lapMessage = 'RACE COMPLETE!';
+    this.lapMessageTimer = 3;
     audio.powerup();
   }
 
@@ -942,6 +968,44 @@ export default class NitroCircuitGame implements IGame {
     ctx.fillText(`${this.countdownValue}`, W / 2, H / 2 + 20);
   }
 
+  private renderLapMessage(ctx: CanvasRenderingContext2D): void {
+    const alpha = Math.min(1, this.lapMessageTimer / 0.3);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = 'center';
+    ctx.shadowColor = PINK;
+    ctx.shadowBlur = 20;
+    ctx.font = 'bold 28px monospace';
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(this.lapMessage, W / 2, H / 2 - 20);
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  private renderRaceEndOverlay(ctx: CanvasRenderingContext2D): void {
+    ctx.save();
+    const alpha = Math.min(0.7, (3 - this.raceEndTimer) * 0.5);
+    ctx.fillStyle = `rgba(10,10,26,${alpha})`;
+    ctx.fillRect(0, 0, W, H);
+    ctx.textAlign = 'center';
+    ctx.font = 'bold 32px monospace';
+    ctx.shadowColor = PINK;
+    ctx.shadowBlur = 15;
+    if (this.finished) {
+      ctx.fillStyle = PINK;
+      ctx.fillText('RACE COMPLETE!', W / 2, H / 2 - 20);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 20px monospace';
+      ctx.fillStyle = '#44ff88';
+      ctx.fillText(`SCORE: ${this.score}`, W / 2, H / 2 + 20);
+    } else {
+      ctx.fillStyle = '#ff4444';
+      ctx.fillText('TIME UP!', W / 2, H / 2 - 10);
+      ctx.shadowBlur = 0;
+    }
+    ctx.restore();
+  }
+
   // ── Menu ───────────────────────────────────────────────────────────
 
   private renderMenu(ctx: CanvasRenderingContext2D): void {
@@ -1000,12 +1064,22 @@ export default class NitroCircuitGame implements IGame {
     ctx.fillRect(W / 2 - 18, 162, 8, 6);
     ctx.fillRect(W / 2 + 10, 162, 8, 6);
 
-    // Controls
+    // Controls help box
+    const boxW = 340;
+    const boxH = 36;
+    const boxX = (W - boxW) / 2;
+    const boxY = 190;
+    ctx.strokeStyle = PINK;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
     ctx.font = '12px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.fillText('UP = Accelerate | DOWN = Brake | LEFT/RIGHT = Steer', W / 2, boxY + boxH / 2 + 1);
+
     ctx.fillStyle = '#aaa';
-    ctx.fillText('UP / DOWN - Accelerate / Brake', W / 2, 200);
-    ctx.fillText('LEFT / RIGHT - Steer', W / 2, 218);
-    ctx.fillText(`Complete ${LAP_COUNT} laps to win!`, W / 2, 240);
+    ctx.fillText(`Complete ${LAP_COUNT} laps to win!`, W / 2, boxY + boxH + 20);
 
     // Blink prompt
     const alpha = Math.sin(this.menuPulse * 3) * 0.5 + 0.5;

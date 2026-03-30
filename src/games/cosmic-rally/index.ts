@@ -73,6 +73,9 @@ export default class CosmicRallyGame implements IGame {
   private serveTimer = 0;
   private menuPulse = 0;
   private starField: { x: number; y: number; brightness: number }[] = [];
+  private scorePauseTimer = 0;
+  private scorePauseDir = 1;
+  private winMessageTimer = 0;
 
   // ── Interface Methods ──────────────────────────────────────────────
 
@@ -112,6 +115,26 @@ export default class CosmicRallyGame implements IGame {
     // Playing state
     if (input.start) {
       this.state = 'paused';
+      return;
+    }
+
+    // Win message delay (show "YOU WIN!" / "GAME OVER" before switching state)
+    if (this.winMessageTimer > 0) {
+      this.winMessageTimer -= dt;
+      this.updateParticles(dt);
+      if (this.winMessageTimer <= 0) {
+        this.state = 'gameover';
+      }
+      return;
+    }
+
+    // Score pause (brief pause after a point before ball resets)
+    if (this.scorePauseTimer > 0) {
+      this.scorePauseTimer -= dt;
+      this.updateParticles(dt);
+      if (this.scorePauseTimer <= 0) {
+        this.checkWin(this.scorePauseDir);
+      }
       return;
     }
 
@@ -182,6 +205,17 @@ export default class CosmicRallyGame implements IGame {
 
     // Scores
     this.renderScores(ctx);
+
+    // Win message overlay (shown during winMessageTimer before gameover)
+    if (this.winMessageTimer > 0 && this.state === 'playing') {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, W, H);
+      const won = this.playerScore >= WIN_SCORE;
+      const msg = won ? 'YOU WIN!' : 'GAME OVER';
+      const col = won ? COL_PLAYER : COL_AI;
+      this.drawGlowText(ctx, msg, W / 2, H / 2 - 10, 32, col, 14);
+      this.drawGlowText(ctx, `${this.playerScore} - ${this.aiScore}`, W / 2, H / 2 + 22, 18, '#ffffff', 6);
+    }
 
     // Paused overlay
     if (this.state === 'paused') {
@@ -307,11 +341,17 @@ export default class CosmicRallyGame implements IGame {
     if (this.ballX < -BALL_R * 2) {
       this.aiScore++;
       audio.lose();
-      this.checkWin(-1);
+      this.ballVX = 0;
+      this.ballVY = 0;
+      this.scorePauseTimer = 1.0;
+      this.scorePauseDir = -1;
     } else if (this.ballX > W + BALL_R * 2) {
       this.playerScore++;
       audio.score();
-      this.checkWin(1);
+      this.ballVX = 0;
+      this.ballVY = 0;
+      this.scorePauseTimer = 1.0;
+      this.scorePauseDir = 1;
     }
   }
 
@@ -329,9 +369,9 @@ export default class CosmicRallyGame implements IGame {
 
   private checkWin(serveDir: number): void {
     if (this.playerScore >= WIN_SCORE || this.aiScore >= WIN_SCORE) {
-      this.state = 'gameover';
       this.ballVX = 0;
       this.ballVY = 0;
+      this.winMessageTimer = 2.0;
     } else {
       this.resetBall(serveDir);
     }
@@ -494,11 +534,25 @@ export default class CosmicRallyGame implements IGame {
     // Subtitle
     const blink = Math.sin(this.menuPulse * 3.5) > 0;
     if (blink) {
-      this.drawGlowText(ctx, 'Press SPACE to start', W / 2, H / 2 + 20, 13, '#aaaacc', 4);
+      this.drawGlowText(ctx, 'Press SPACE or START', W / 2, H / 2 + 20, 13, '#aaaacc', 4);
     }
 
-    // Controls hint
-    this.drawGlowText(ctx, 'W/S or Up/Down  |  First to 11 wins', W / 2, H / 2 + 55, 10, '#667', 0);
+    // Controls help box
+    const boxW = 280;
+    const boxH = 36;
+    const boxX = W / 2 - boxW / 2;
+    const boxY = H / 2 + 42;
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,20,50,0.7)';
+    ctx.strokeStyle = 'rgba(100,100,180,0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    this.drawGlowText(ctx, 'W/S or D-Pad = Move Paddle', W / 2, boxY + 12, 10, '#99aabb', 0);
+    this.drawGlowText(ctx, 'First to 11 wins', W / 2, boxY + 26, 10, '#99aabb', 0);
   }
 
   private drawGlowText(

@@ -104,6 +104,8 @@ export default class VoidPatrolGame implements IGame {
   private menuTimer = 0;
   private startDebounce = false;
   private action2Debounce = false;
+  private waveClearTimer = 0;   // 2s pause between waves
+  private deathPauseTimer = 0;  // 1.5s pause on death before respawn
 
   private player!: Player;
   private bullets: Bullet[] = [];
@@ -162,6 +164,8 @@ export default class VoidPatrolGame implements IGame {
     this.mines = [];
     this.particles = [];
     this.fireCooldown = 0;
+    this.waveClearTimer = 0;
+    this.deathPauseTimer = 0;
 
     this.player = { x: WORLD_W / 2, y: H / 2, facing: 1, invulnTimer: 2 };
     this.cameraX = this.player.x;
@@ -307,6 +311,30 @@ export default class VoidPatrolGame implements IGame {
 
     this.waveTimer = Math.max(0, this.waveTimer - dt);
 
+    // Death pause: count down before respawn, only update particles
+    if (this.deathPauseTimer > 0) {
+      this.deathPauseTimer -= dt;
+      this.updateParticles(dt);
+      if (this.deathPauseTimer <= 0) {
+        this.deathPauseTimer = 0;
+        this.player.invulnTimer = 2;
+        this.player.y = H / 2;
+        this.smartBombs = SMART_BOMBS_PER_LIFE;
+      }
+      return;
+    }
+
+    // Wave-clear pause: count down then spawn next wave
+    if (this.waveClearTimer > 0) {
+      this.waveClearTimer -= dt;
+      this.updateParticles(dt);
+      if (this.waveClearTimer <= 0) {
+        this.waveClearTimer = 0;
+        this.nextWave();
+      }
+      return;
+    }
+
     this.updatePlayer(dt, input);
     this.updateBullets(dt);
     this.updateEnemies(dt);
@@ -315,9 +343,9 @@ export default class VoidPatrolGame implements IGame {
     this.updateParticles(dt);
     this.checkCollisions();
 
-    // Check wave complete
+    // Check wave complete — start 2-second cleared pause
     if (this.enemies.filter(e => e.alive).length === 0 && this.mines.length === 0) {
-      this.nextWave();
+      this.waveClearTimer = 2;
     }
   }
 
@@ -737,9 +765,8 @@ export default class VoidPatrolGame implements IGame {
       this.state = 'gameover';
       this.menuTimer = 0;
     } else {
-      this.player.invulnTimer = 2;
-      this.player.y = H / 2;
-      this.smartBombs = SMART_BOMBS_PER_LIFE;
+      // Start 1.5s death pause before respawn
+      this.deathPauseTimer = 1.5;
     }
   }
 
@@ -830,6 +857,33 @@ export default class VoidPatrolGame implements IGame {
       ctx.shadowBlur = 10;
       ctx.fillText(`WAVE ${this.wave}`, W / 2, H / 2 - 20);
       ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    // Wave cleared pause overlay
+    if (this.state === 'playing' && this.waveClearTimer > 0) {
+      const alpha = Math.min(1, this.waveClearTimer);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#0f0';
+      ctx.font = 'bold 22px monospace';
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#0f0';
+      ctx.shadowBlur = 12;
+      ctx.fillText('WAVE CLEARED!', W / 2, H / 2 - 10);
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    }
+
+    // Death pause overlay
+    if (this.state === 'playing' && this.deathPauseTimer > 0) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(0, 0, W, H);
+      const alpha = 0.6 + Math.sin(this.deathPauseTimer * 6) * 0.4;
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#f44';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('SHIP DESTROYED', W / 2, H / 2);
       ctx.globalAlpha = 1;
     }
 
@@ -1192,11 +1246,22 @@ export default class VoidPatrolGame implements IGame {
     ctx.fillText('Press SPACE to start', W / 2, H / 2 + 30);
     ctx.globalAlpha = 1;
 
-    // Controls
+    // Controls help box
+    const boxW = 280;
+    const boxH = 40;
+    const boxX = W / 2 - boxW / 2;
+    const boxY = H / 2 + 46;
+    ctx.strokeStyle = ACCENT_DIM;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(10, 10, 40, 0.6)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#aaa';
+    ctx.font = '11px monospace';
+    ctx.fillText('ARROWS = Fly | SPACE = Shoot | X = Smart Bomb', W / 2, boxY + 16);
     ctx.fillStyle = '#666';
     ctx.font = '10px monospace';
-    ctx.fillText('ARROWS: Move   SPACE: Shoot   X: Smart Bomb', W / 2, H / 2 + 60);
-    ctx.fillText('ENTER: Pause', W / 2, H / 2 + 75);
+    ctx.fillText('ENTER: Pause', W / 2, boxY + 32);
 
     // Decorative ships
     const shipY = H / 2 + 110;

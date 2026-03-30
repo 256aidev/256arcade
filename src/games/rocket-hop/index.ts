@@ -67,9 +67,14 @@ export default class RocketHopGame implements IGame {
 
   // Input tracking for rising edge
   private prevAction1 = false;
+  private prevStart = false;
 
   // Menu animation
   private menuTime = 0;
+
+  // Level transition
+  private levelClearTimer = 0;
+  private currentLevel = 1;
 
   async init(_canvas: HTMLCanvasElement): Promise<void> {
     this.reset();
@@ -82,6 +87,9 @@ export default class RocketHopGame implements IGame {
     this.distanceTraveled = 0;
     this.particles = [];
     this.prevAction1 = false;
+    this.prevStart = false;
+    this.levelClearTimer = 0;
+    this.currentLevel = 1;
 
     // Generate stars
     this.stars = [];
@@ -120,29 +128,35 @@ export default class RocketHopGame implements IGame {
     }
 
     if (this.state === 'menu') {
-      if (input.action1 && !this.prevAction1) {
-        this.state = 'playing';
+      const action1Rising = input.action1 && !this.prevAction1;
+      const startRising = input.start && !this.prevStart;
+      if (action1Rising || startRising) {
         this.reset();
         this.state = 'playing';
         audio.jump();
       }
       this.prevAction1 = input.action1;
+      this.prevStart = input.start;
       return;
     }
 
     if (this.state === 'gameover') {
       // Update particles even in gameover for explosion effect
       this.updateParticles(dt);
-      if (input.action1 && !this.prevAction1) {
+      const action1Rising = input.action1 && !this.prevAction1;
+      const startRising = input.start && !this.prevStart;
+      if (action1Rising || startRising) {
         this.state = 'menu';
         this.reset();
       }
       this.prevAction1 = input.action1;
+      this.prevStart = input.start;
       return;
     }
 
     if (this.state !== 'playing') {
       this.prevAction1 = input.action1;
+      this.prevStart = input.start;
       return;
     }
 
@@ -167,6 +181,14 @@ export default class RocketHopGame implements IGame {
       }
     }
     this.prevAction1 = input.action1;
+    this.prevStart = input.start;
+
+    // Level clear pause — freeze gameplay for 2 seconds
+    if (this.levelClearTimer > 0) {
+      this.levelClearTimer -= dt;
+      this.updateParticles(dt);
+      return;
+    }
 
     // Gravity
     this.rocketVY += GRAVITY * dt;
@@ -191,6 +213,11 @@ export default class RocketHopGame implements IGame {
         ast.scored = true;
         this.score++;
         audio.score();
+        // Level clear every 10 points
+        if (this.score > 0 && this.score % 10 === 0) {
+          this.currentLevel++;
+          this.levelClearTimer = 2.0;
+        }
       }
     }
 
@@ -321,6 +348,25 @@ export default class RocketHopGame implements IGame {
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(String(this.score), w / 2, 10);
 
+    // Level clear message overlay
+    if (this.state === 'playing' && this.levelClearTimer > 0) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(0, h / 2 - 40, w, 80);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = '#FFD700';
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = '#FFD700';
+      ctx.font = 'bold 32px monospace';
+      ctx.fillText('LEVEL CLEAR!', w / 2, h / 2 - 8);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = '16px monospace';
+      ctx.fillText(`Level ${this.currentLevel} incoming...`, w / 2, h / 2 + 22);
+      ctx.restore();
+    }
+
     if (this.state === 'gameover') {
       // Particles still render (explosion), score visible
       // Shell handles gameover overlay
@@ -353,8 +399,22 @@ export default class RocketHopGame implements IGame {
     if (blink) {
       ctx.fillStyle = '#FFD700';
       ctx.font = 'bold 16px monospace';
-      ctx.fillText('Press SPACE to start', w / 2, h / 2 + 50);
+      ctx.fillText('Press SPACE or START', w / 2, h / 2 + 50);
     }
+
+    // Controls help box
+    const boxW = 220;
+    const boxH = 32;
+    const boxX = w / 2 - boxW / 2;
+    const boxY = h / 2 + 72;
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#AAAAAA';
+    ctx.font = '12px monospace';
+    ctx.fillText('SPACE / A Button = Thrust', w / 2, boxY + boxH / 2);
 
     // Draw a little rocket icon on the menu
     const menuRocketY = h / 2 - 40 + Math.sin(this.menuTime * 2) * 8;

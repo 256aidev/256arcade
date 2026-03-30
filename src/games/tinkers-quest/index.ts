@@ -569,7 +569,7 @@ export default class TinkersQuestGame implements IGame {
   }
 
   private startTransition(dir: 'left' | 'right' | 'up' | 'down'): void {
-    this.transitionTimer = 0.25;
+    this.transitionTimer = 0.5;
     this.transitionDir = dir;
   }
 
@@ -717,7 +717,7 @@ export default class TinkersQuestGame implements IGame {
       this.state = 'gameover';
       audio.explosion();
     } else {
-      this.respawnTimer = 0.8;
+      this.respawnTimer = 1.5;
       this.invincibleTimer = 2.0;
     }
   }
@@ -756,7 +756,7 @@ export default class TinkersQuestGame implements IGame {
 
     // Transition flash effect
     if (this.transitionTimer > 0) {
-      const alpha = this.transitionTimer / 0.25;
+      const alpha = this.transitionTimer / 0.5;
       this.renderRoom(ctx);
       ctx.fillStyle = `rgba(26,16,8,${alpha})`;
       ctx.fillRect(0, 0, W, PLAY_H);
@@ -863,14 +863,23 @@ export default class TinkersQuestGame implements IGame {
     if (Math.floor(this.menuBlink * 2) % 2 === 0) {
       ctx.fillStyle = COL_TEXT;
       ctx.font = 'bold 14px monospace';
-      ctx.fillText('Press SPACE to start', W / 2, 250);
+      ctx.fillText('Press SPACE to start', W / 2, 240);
     }
 
-    // Controls
-    ctx.fillStyle = COL_PLAT_TOP;
+    // Controls help box
+    const boxW = 380;
+    const boxH = 48;
+    const boxX = (W - boxW) / 2;
+    const boxY = 258;
+    ctx.strokeStyle = COL_BRONZE;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(13,8,4,0.7)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = COL_TEXT;
     ctx.font = '11px monospace';
-    ctx.fillText('Arrows: Move  |  X: Jump  |  Z: Interact', W / 2, 285);
-    ctx.fillText('Down+Z: Cycle Inventory  |  Collect 5 Core Gears!', W / 2, 300);
+    ctx.fillText('ARROWS = Move | X = Jump | Z = Interact/Use Item', W / 2, boxY + 18);
+    ctx.fillText('DOWN+Z = Cycle Items  |  Collect 5 Core Gears!', W / 2, boxY + 36);
   }
 
   private drawGearDecor(ctx: CanvasRenderingContext2D, x: number, y: number, r: number, angle: number, color: string): void {

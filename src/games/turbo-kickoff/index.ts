@@ -25,7 +25,7 @@ const AI_SPEED = 115;
 const GK_SPEED = 100;
 const TACKLE_DIST = 14;
 const KICK_COOLDOWN = 0.3;
-const RESTART_DELAY = 1.5;
+const RESTART_DELAY = 2.0;
 
 interface Vec2 { x: number; y: number; }
 
@@ -90,6 +90,8 @@ export default class TurboKickoffGame implements IGame {
   private action1HoldTime = 0;
   private particles: { x: number; y: number; vx: number; vy: number; life: number; color: string }[] = [];
   private matchOver = false;
+  private matchEndTimer = 0;
+  private matchEndPending = false;
 
   async init(_canvas: HTMLCanvasElement): Promise<void> {
     this.state = 'menu';
@@ -101,6 +103,8 @@ export default class TurboKickoffGame implements IGame {
     this.timer = MATCH_TIME;
     this.suddenDeath = false;
     this.matchOver = false;
+    this.matchEndTimer = 0;
+    this.matchEndPending = false;
     this.goalFlash = 0;
     this.goalMessage = '';
     this.setupPlayers();
@@ -185,7 +189,7 @@ export default class TurboKickoffGame implements IGame {
     this.animT += dt;
 
     if (this.state === 'menu') {
-      if (input.start && !this.prevInput.start) {
+      if ((input.start && !this.prevInput.start) || (input.action1 && !this.prevInput.action1)) {
         this.state = 'playing';
         this.resetMatch();
         audio.hit();
@@ -195,7 +199,7 @@ export default class TurboKickoffGame implements IGame {
     }
 
     if (this.state === 'gameover') {
-      if (input.start && !this.prevInput.start) {
+      if ((input.start && !this.prevInput.start) || (input.action1 && !this.prevInput.action1)) {
         this.state = 'menu';
       }
       this.prevInput = { ...input };
@@ -213,6 +217,20 @@ export default class TurboKickoffGame implements IGame {
     // Playing state
     if (input.start && !this.prevInput.start) {
       this.state = 'paused';
+      this.prevInput = { ...input };
+      return;
+    }
+
+    // Match end delay (show final score for 3 seconds before gameover)
+    if (this.matchEndPending) {
+      this.matchEndTimer -= dt;
+      this.goalFlash = Math.max(0, this.goalFlash - dt);
+      this.updateParticles(dt);
+      if (this.matchEndTimer <= 0) {
+        this.matchOver = true;
+        this.state = 'gameover';
+        this.score = this.playerGoals;
+      }
       this.prevInput = { ...input };
       return;
     }
@@ -236,8 +254,10 @@ export default class TurboKickoffGame implements IGame {
         this.goalMessage = 'SUDDEN DEATH!';
         this.goalFlash = 2;
       } else {
-        this.matchOver = true;
-        this.state = 'gameover';
+        this.matchEndPending = true;
+        this.matchEndTimer = 3;
+        this.goalMessage = this.playerGoals > this.cpuGoals ? 'YOU WIN!' : this.cpuGoals > this.playerGoals ? 'YOU LOSE' : 'DRAW';
+        this.goalFlash = 3;
         this.score = this.playerGoals;
         if (this.playerGoals > this.cpuGoals) {
           audio.score();
@@ -696,12 +716,11 @@ export default class TurboKickoffGame implements IGame {
 
     // Check sudden death
     if (this.suddenDeath) {
-      // Game over after restart delay
-      setTimeout(() => {
-        this.matchOver = true;
-        this.state = 'gameover';
-        this.score = this.playerGoals;
-      }, RESTART_DELAY * 1000);
+      // Game over after showing result for 3 seconds
+      this.matchEndPending = true;
+      this.matchEndTimer = 3;
+      this.goalMessage = scoringTeam === 0 ? 'YOU WIN!' : 'YOU LOSE';
+      this.goalFlash = 3;
     } else {
       setTimeout(() => {
         if (this.state === 'playing') this.resetPositions();
@@ -738,6 +757,40 @@ export default class TurboKickoffGame implements IGame {
     }
 
     this.renderField(ctx);
+
+    if (this.matchEndPending) {
+      const alpha = Math.min(0.7, (3 - this.matchEndTimer) * 0.4);
+      ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.shadowColor = TEAL;
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 24px monospace';
+      ctx.fillText('FULL TIME', W / 2, H / 2 - 50);
+      ctx.shadowBlur = 0;
+      ctx.font = 'bold 36px monospace';
+      ctx.fillStyle = TEAL;
+      ctx.fillText(`${this.playerGoals}`, W / 2 - 50, H / 2);
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText('-', W / 2, H / 2);
+      ctx.fillStyle = ORANGE;
+      ctx.font = 'bold 36px monospace';
+      ctx.fillText(`${this.cpuGoals}`, W / 2 + 50, H / 2);
+      ctx.font = 'bold 18px monospace';
+      if (this.playerGoals > this.cpuGoals) {
+        ctx.fillStyle = TEAL;
+        ctx.fillText('YOU WIN!', W / 2, H / 2 + 45);
+      } else if (this.cpuGoals > this.playerGoals) {
+        ctx.fillStyle = ORANGE;
+        ctx.fillText('YOU LOSE', W / 2, H / 2 + 45);
+      } else {
+        ctx.fillStyle = '#fff';
+        ctx.fillText('DRAW', W / 2, H / 2 + 45);
+      }
+    }
 
     if (this.state === 'paused') {
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -805,9 +858,20 @@ export default class TurboKickoffGame implements IGame {
     ctx.fillText('Press SPACE to start', W / 2, H / 2 + 70);
     ctx.globalAlpha = 1;
 
-    ctx.font = '10px monospace';
-    ctx.fillStyle = '#aaa';
-    ctx.fillText('Arrows: move | Z: pass/shoot | X: switch/tackle', W / 2, H - 30);
+    // Controls help box
+    const boxW = 380;
+    const boxH = 32;
+    const boxX = (W - boxW) / 2;
+    const boxY = H - 50;
+    ctx.strokeStyle = TEAL;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.font = '11px monospace';
+    ctx.fillStyle = '#fff';
+    ctx.globalAlpha = 1;
+    ctx.fillText('ARROWS = Move | Z = Pass/Shoot | X = Switch/Tackle', W / 2, boxY + boxH / 2 + 1);
   }
 
   private renderField(ctx: CanvasRenderingContext2D): void {

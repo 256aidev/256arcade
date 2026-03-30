@@ -172,6 +172,7 @@ export default class SlimeDungeonGame implements IGame {
   private levelClearTimer = 0;
   private screenShake = 0;
   private menuBlink = 0;
+  private deathPauseTimer = 0;
 
   async init(_canvas: HTMLCanvasElement): Promise<void> {
     this.state = 'menu';
@@ -250,7 +251,7 @@ export default class SlimeDungeonGame implements IGame {
     this.menuBlink += dt;
 
     if (this.state === 'menu') {
-      if (input.start && !this.prevStart) {
+      if ((input.start && !this.prevStart) || (input.action1 && !this.prevAction1)) {
         this.startGame();
         audio.powerup();
       }
@@ -287,9 +288,19 @@ export default class SlimeDungeonGame implements IGame {
       return;
     }
 
+    // Death pause (brief freeze after being hit)
+    if (this.deathPauseTimer > 0) {
+      this.deathPauseTimer -= dt;
+      this.updateParticles(dt);
+      this.prevStart = input.start;
+      this.prevAction1 = input.action1;
+      this.prevAction2 = input.action2;
+      return;
+    }
+
     // Level clear check
     if (this.enemies.length === 0 && this.levelClearTimer <= 0) {
-      this.levelClearTimer = 1.5;
+      this.levelClearTimer = 2.0;
     }
     if (this.levelClearTimer > 0) {
       this.levelClearTimer -= dt;
@@ -595,6 +606,8 @@ export default class SlimeDungeonGame implements IGame {
 
     if (this.player.lives <= 0) {
       this.state = 'gameover';
+    } else {
+      this.deathPauseTimer = 1.0;
     }
   }
 
@@ -688,12 +701,30 @@ export default class SlimeDungeonGame implements IGame {
     // Playing
     this.drawGameScene(ctx);
 
+    // Death pause indicator
+    if (this.deathPauseTimer > 0) {
+      ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('OUCH!', W / 2, H / 2 - 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '12px monospace';
+      ctx.fillText(`Lives: ${this.player.lives}`, W / 2, H / 2 + 12);
+    }
+
     // Level clear message
     if (this.levelClearTimer > 0) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = '#22c55e';
-      ctx.font = 'bold 20px monospace';
+      ctx.font = 'bold 24px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText('LEVEL CLEAR!', W / 2, H / 2);
+      ctx.fillText('LEVEL CLEAR!', W / 2, H / 2 - 10);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '16px monospace';
+      ctx.fillText(`Level ${this.level + 1} Complete`, W / 2, H / 2 + 16);
     }
 
     ctx.restore();
@@ -990,11 +1021,23 @@ export default class SlimeDungeonGame implements IGame {
       ctx.fillText('PRESS SPACE', W / 2, 240);
     }
 
-    // Controls
-    ctx.fillStyle = '#888';
+    // Controls help box
+    const boxW = 320;
+    const boxH = 50;
+    const boxX = (W - boxW) / 2;
+    const boxY = 258;
+    ctx.strokeStyle = '#4a4a5e';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(26, 26, 46, 0.8)';
+    ctx.fillRect(boxX + 1, boxY + 1, boxW - 2, boxH - 2);
+
+    ctx.fillStyle = '#aaa';
+    ctx.font = 'bold 11px monospace';
+    ctx.fillText('ARROWS = Move  |  Z = Shoot Orb  |  X = Jump', W / 2, boxY + 20);
+    ctx.fillStyle = '#777';
     ctx.font = '10px monospace';
-    ctx.fillText('ARROWS: Move  |  Z: Shoot  |  X: Jump', W / 2, 280);
-    ctx.fillText('Trap slimes in magic orbs, then pop them!', W / 2, 296);
+    ctx.fillText('Trap slimes in magic orbs, then pop them!', W / 2, boxY + 38);
   }
 
   private drawGameOver(ctx: CanvasRenderingContext2D): void {

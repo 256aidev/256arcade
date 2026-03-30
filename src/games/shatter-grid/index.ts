@@ -76,6 +76,8 @@ export default class ShatterGridGame implements IGame {
   private prevAction1 = false;
   private prevStart = false;
   private gameWon = false;
+  private levelClearTimer = 0;
+  private lifeLostTimer = 0;
 
   // Hex grid cache
   private hexGridCanvas: HTMLCanvasElement | null = null;
@@ -179,6 +181,27 @@ export default class ShatterGridGame implements IGame {
       return;
     }
 
+    // ── Level clear pause ──
+    if (this.levelClearTimer > 0) {
+      this.levelClearTimer -= dt;
+      if (this.levelClearTimer <= 0) {
+        this.levelClearTimer = 0;
+        this.level++;
+        this.resetLevel();
+      }
+      return;
+    }
+
+    // ── Life lost pause ──
+    if (this.lifeLostTimer > 0) {
+      this.lifeLostTimer -= dt;
+      if (this.lifeLostTimer <= 0) {
+        this.lifeLostTimer = 0;
+        this.spawnBall();
+      }
+      return;
+    }
+
     // Clamp dt to avoid physics tunneling
     dt = Math.min(dt, 0.033);
 
@@ -198,7 +221,7 @@ export default class ShatterGridGame implements IGame {
     }
 
     // ── Launch ball ──
-    if (this.ballAttached && spacePressed) {
+    if (this.ballAttached && (spacePressed || startPressed)) {
       this.launchBall();
     }
 
@@ -295,7 +318,8 @@ export default class ShatterGridGame implements IGame {
         this.gameWon = false;
         return;
       }
-      this.spawnBall();
+      this.lifeLostTimer = 1.0; // 1-second pause before respawn
+      return;
     }
 
     // ── Powerups ──
@@ -336,9 +360,9 @@ export default class ShatterGridGame implements IGame {
         this.gameWon = true;
         audio.score();
       } else {
-        this.level++;
-        this.resetLevel();
         audio.powerup();
+        this.levelClearTimer = 2.0; // 2-second "LEVEL CLEAR!" pause
+        return;
       }
     }
   }
@@ -441,6 +465,41 @@ export default class ShatterGridGame implements IGame {
     }
 
     this.drawGame(ctx);
+
+    // Level clear overlay
+    if (this.levelClearTimer > 0) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#00ff88';
+      ctx.shadowColor = '#00ff88';
+      ctx.shadowBlur = 20;
+      ctx.font = 'bold 28px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LEVEL CLEAR!', W / 2, H / 2 - 14);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#aabbcc';
+      ctx.font = '14px monospace';
+      ctx.fillText(`Level ${this.level} complete`, W / 2, H / 2 + 18);
+    }
+
+    // Life lost overlay
+    if (this.lifeLostTimer > 0) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#ff4466';
+      ctx.shadowColor = '#ff4466';
+      ctx.shadowBlur = 16;
+      ctx.font = 'bold 20px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('LIFE LOST', W / 2, H / 2 - 8);
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#aabbcc';
+      ctx.font = '12px monospace';
+      ctx.fillText(`${this.lives} ${this.lives === 1 ? 'life' : 'lives'} remaining`, W / 2, H / 2 + 14);
+    }
+
     ctx.restore();
   }
 
@@ -594,11 +653,20 @@ export default class ShatterGridGame implements IGame {
     ctx.fillText('PRESS SPACE TO INITIALIZE', W / 2, H / 2 + 30);
     ctx.globalAlpha = 1;
 
-    // Controls
-    ctx.fillStyle = '#445566';
+    // Controls help box
+    const boxW = 320;
+    const boxH = 38;
+    const boxX = (W - boxW) / 2;
+    const boxY = H / 2 + 48;
+    ctx.strokeStyle = 'rgba(0, 212, 255, 0.25)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(0, 10, 20, 0.5)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#7799aa';
     ctx.font = '9px monospace';
-    ctx.fillText('LEFT/RIGHT = MOVE DECODER  |  SPACE = LAUNCH PULSE', W / 2, H / 2 + 60);
-    ctx.fillText('ENTER = PAUSE', W / 2, H / 2 + 74);
+    ctx.fillText('LEFT/RIGHT = Move Paddle  |  SPACE = Launch Ball', W / 2, boxY + 14);
+    ctx.fillText('ENTER = Pause', W / 2, boxY + 28);
   }
 
   private drawOverlay(ctx: CanvasRenderingContext2D, title: string, subtitle: string): void {

@@ -323,10 +323,10 @@ export default class PixelDashGame implements IGame {
       if (slotHit) {
         // Check if all slots filled
         if (this.slots.every(s => s.filled)) {
-          this.level++;
           this.score += 200; // level bonus
           audio.powerup();
-          this.winFlash = 1.2;
+          this.winFlash = 2.0;
+          this.level++;
         } else {
           this.playerCol = 7;
           this.playerRow = 9;
@@ -356,7 +356,7 @@ export default class PixelDashGame implements IGame {
       this.state = 'gameover';
       this.gameWon = false;
     } else {
-      this.deathFlash = 1.0;
+      this.deathFlash = 1.5;
       this.playerCol = 7;
       this.playerRow = 9;
       this.syncPlayerPixel();
@@ -414,17 +414,38 @@ export default class PixelDashGame implements IGame {
     // Particles
     this.renderParticles(ctx);
 
+    // Death flash overlay
+    if (this.deathFlash > 0) {
+      ctx.fillStyle = `rgba(255, 0, 0, ${Math.min(this.deathFlash, 1) * 0.25})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.shadowColor = '#ff4444';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 28px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('CRASHED!', W / 2, H / 2);
+      ctx.restore();
+    }
+
     // HUD
     this.renderHUD(ctx);
 
     // Win flash overlay
     if (this.winFlash > 0) {
-      ctx.fillStyle = `rgba(255, 0, 128, ${this.winFlash * 0.4})`;
+      ctx.fillStyle = `rgba(255, 0, 128, ${Math.min(this.winFlash, 1) * 0.4})`;
       ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.shadowColor = PINK;
+      ctx.shadowBlur = 16;
       ctx.fillStyle = '#fff';
-      ctx.font = 'bold 24px monospace';
+      ctx.font = 'bold 28px monospace';
       ctx.textAlign = 'center';
-      ctx.fillText(`LEVEL ${this.level - 1} COMPLETE!`, W / 2, H / 2);
+      ctx.fillText('LEVEL CLEAR!', W / 2, H / 2 - 10);
+      ctx.fillStyle = CYAN;
+      ctx.font = 'bold 18px monospace';
+      ctx.fillText(`Level ${this.level - 1}`, W / 2, H / 2 + 20);
+      ctx.restore();
     }
 
     ctx.restore();
@@ -470,11 +491,20 @@ export default class PixelDashGame implements IGame {
       ctx.fillText('PRESS SPACE', W / 2, 260);
     }
 
-    // Controls
-    ctx.fillStyle = '#666688';
+    // Controls help box
+    const boxW = 340;
+    const boxH = 32;
+    const boxX = (W - boxW) / 2;
+    const boxY = 272;
+    ctx.strokeStyle = '#444466';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = 'rgba(10, 10, 18, 0.7)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#888aaa';
     ctx.font = '11px monospace';
     ctx.textAlign = 'center';
-    ctx.fillText('ARROW KEYS TO MOVE', W / 2, 290);
+    ctx.fillText('ARROW KEYS / D-Pad = Move | One step at a time', W / 2, boxY + 20);
   }
 
   private renderGameOver(ctx: CanvasRenderingContext2D): void {

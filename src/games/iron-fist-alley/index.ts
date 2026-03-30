@@ -233,6 +233,9 @@ export default class IronFistAlleyGame implements IGame {
   private stageTransition = 0;
   private stageTransitionText = '';
   private gameWon = false;
+  private deathPause = 0;
+  private sectionClearPause = 0;
+  private sectionClearText = '';
 
   // Rain
   private rain: RainDrop[] = [];
@@ -282,6 +285,9 @@ export default class IronFistAlleyGame implements IGame {
     this.stageIndex = 0;
     this.sectionIndex = 0;
     this.gameWon = false;
+    this.deathPause = 0;
+    this.sectionClearPause = 0;
+    this.sectionClearText = '';
     this.loadSection();
   }
 
@@ -336,9 +342,11 @@ export default class IronFistAlleyGame implements IGame {
       }
       this.startStage();
     } else {
-      this.showGo = true;
-      this.goTimer = 0;
-      this.sectionCleared = true;
+      // 2-second pause showing stage name before the GO prompt
+      this.sectionClearPause = 2.0;
+      this.sectionClearText = `${stage.name} - SECTION ${this.sectionIndex + 1}`;
+      this.showGo = false;
+      this.sectionCleared = false;
     }
   }
 
@@ -367,14 +375,18 @@ export default class IronFistAlleyGame implements IGame {
       this.state = 'gameover';
       audio.lose();
     } else {
-      // Respawn at current section
+      // Death pause before respawn
+      this.deathPause = 1.5;
       audio.playTone(150, 0.4, 'sawtooth');
-      this.player.hp = this.player.maxHp;
-      this.player.knockdown = false;
-      this.player.knockdownTimer = 0;
-      this.player.invulnTimer = INVULN_DUR * 2;
-      this.player.x = this.scrollX + 60;
     }
+  }
+
+  private respawnPlayer(): void {
+    this.player.hp = this.player.maxHp;
+    this.player.knockdown = false;
+    this.player.knockdownTimer = 0;
+    this.player.invulnTimer = INVULN_DUR * 2;
+    this.player.x = this.scrollX + 60;
   }
 
   update(dt: number, input: InputState): void {
@@ -386,7 +398,8 @@ export default class IronFistAlleyGame implements IGame {
     this.updateNeonSigns(dt);
 
     if (this.state === 'menu') {
-      if (input.start && !this.prevStart) {
+      const startPressed = (input.start && !this.prevStart) || (input.action1 && !this.prevAction1);
+      if (startPressed) {
         this.state = 'playing';
         this.reset();
         this.startStage();
@@ -428,6 +441,32 @@ export default class IronFistAlleyGame implements IGame {
     // Stage transition
     if (this.stageTransition > 0) {
       this.stageTransition -= dt;
+      this.prevStart = input.start;
+      this.prevAction1 = input.action1;
+      this.prevAction2 = input.action2;
+      return;
+    }
+
+    // Section clear pause
+    if (this.sectionClearPause > 0) {
+      this.sectionClearPause -= dt;
+      if (this.sectionClearPause <= 0) {
+        this.showGo = true;
+        this.goTimer = 0;
+        this.sectionCleared = true;
+      }
+      this.prevStart = input.start;
+      this.prevAction1 = input.action1;
+      this.prevAction2 = input.action2;
+      return;
+    }
+
+    // Death pause
+    if (this.deathPause > 0) {
+      this.deathPause -= dt;
+      if (this.deathPause <= 0) {
+        this.respawnPlayer();
+      }
       this.prevStart = input.start;
       this.prevAction1 = input.action1;
       this.prevAction2 = input.action2;
@@ -776,11 +815,19 @@ export default class IronFistAlleyGame implements IGame {
     ctx.textAlign = 'center';
     ctx.fillText('A rain-soaked neon brawler', W / 2, 170);
 
-    // Controls
-    ctx.fillStyle = '#6b7280';
+    // Controls help box
+    const boxW = 320;
+    const boxH = 36;
+    const boxX = (W - boxW) / 2;
+    const boxY = 205;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.fillRect(boxX, boxY, boxW, boxH);
+    ctx.strokeStyle = NEON_BLUE;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.fillStyle = '#d1d5db';
     ctx.font = '11px monospace';
-    ctx.fillText('ARROWS: Move  |  Z: Punch  |  X: Kick', W / 2, 220);
-    ctx.fillText('3-hit punch combo for knockdown!', W / 2, 238);
+    ctx.fillText('ARROWS = Move | Z = Punch | X = Kick | 3-Hit Combo!', W / 2, boxY + 22);
 
     // Flash "Press SPACE"
     const flash = Math.sin(Date.now() * 0.005) > 0;
@@ -926,6 +973,41 @@ export default class IronFistAlleyGame implements IGame {
       ctx.fillText(`STAGE ${this.stageIndex + 1}`, W / 2, H / 2 - 20);
       ctx.font = 'bold 24px monospace';
       ctx.fillText(this.stageTransitionText, W / 2, H / 2 + 10);
+      ctx.restore();
+    }
+
+    // Section clear pause overlay
+    if (this.sectionClearPause > 0) {
+      const alpha = Math.min(1, this.sectionClearPause);
+      ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.6})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.shadowColor = NEON_GREEN;
+      ctx.shadowBlur = 15;
+      ctx.fillStyle = NEON_GREEN;
+      ctx.font = 'bold 10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('SECTION CLEAR!', W / 2, H / 2 - 15);
+      ctx.font = 'bold 20px monospace';
+      ctx.fillText(this.sectionClearText, W / 2, H / 2 + 12);
+      ctx.restore();
+    }
+
+    // Death pause overlay
+    if (this.deathPause > 0) {
+      const alpha = Math.min(1, this.deathPause);
+      ctx.fillStyle = `rgba(0, 0, 0, ${alpha * 0.5})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.save();
+      ctx.shadowColor = RED;
+      ctx.shadowBlur = 20;
+      ctx.fillStyle = RED;
+      ctx.font = 'bold 22px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('LIFE LOST', W / 2, H / 2 - 5);
+      ctx.fillStyle = '#d1d5db';
+      ctx.font = '12px monospace';
+      ctx.fillText(`x${this.lives} remaining`, W / 2, H / 2 + 18);
       ctx.restore();
     }
   }
