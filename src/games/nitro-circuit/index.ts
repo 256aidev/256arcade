@@ -660,15 +660,20 @@ export default class NitroCircuitGame implements IGame {
       seg.p1.world.x = curveX - camX;
       seg.p1.world.y = hillY;
       seg.p1.world.z = (n === 0 ? (1 - basePercent) : 1) * SEG_LEN + (n > 0 ? (n - 1 + (1 - basePercent)) * SEG_LEN : 0);
-      // Simpler: just use index-based Z with camera offset
-      seg.p1.world.z = n * SEG_LEN - (basePercent * SEG_LEN);
+      // Z distance from camera (always positive, start at partial segment offset)
+      const z1 = (n + basePercent) * SEG_LEN;
+      const z2 = (n + 1 + basePercent) * SEG_LEN;
+
+      seg.p1.world.x = curveX - camX;
+      seg.p1.world.y = hillY;
+      seg.p1.world.z = z1 < 1 ? 1 : z1; // clamp to avoid division by zero
 
       curveX += seg.curve;
       hillY += seg.hill;
 
       seg.p2.world.x = curveX - camX;
       seg.p2.world.y = hillY;
-      seg.p2.world.z = (n + 1) * SEG_LEN - (basePercent * SEG_LEN);
+      seg.p2.world.z = z2;
 
       this.project(seg.p1, 0, camY, 0);
       this.project(seg.p2, 0, camY, 0);
@@ -688,7 +693,8 @@ export default class NitroCircuitGame implements IGame {
       const w1 = seg.p1.screen.w;
       const w2 = seg.p2.screen.w;
 
-      if (y2 >= maxY) continue; // behind a hill
+      // Skip segments fully behind a closer hill
+      if (y1 >= maxY && y2 >= maxY) continue;
 
       // Grass
       ctx.fillStyle = seg.color.grass;
