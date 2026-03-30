@@ -40,30 +40,58 @@ export class InputManager {
     const kAction2 = this.keys.has('KeyX') || this.keys.has('ShiftLeft');
     const kStart = this.keys.has('Enter') || this.keys.has('Escape');
 
-    // Gamepad
+    // Gamepad — poll every frame
     let gUp = false, gDown = false, gLeft = false, gRight = false;
     let gAction1 = false, gAction2 = false, gStart = false;
 
-    const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-    for (const gp of gamepads) {
-      if (!gp) continue;
-      // D-pad buttons (standard mapping: 12=up, 13=down, 14=left, 15=right)
-      if (gp.buttons[12]?.pressed) gUp = true;
-      if (gp.buttons[13]?.pressed) gDown = true;
-      if (gp.buttons[14]?.pressed) gLeft = true;
-      if (gp.buttons[15]?.pressed) gRight = true;
-      // Face buttons: A/Cross=0, B/Circle=1, X/Square=2, Y/Triangle=3
-      if (gp.buttons[0]?.pressed) gAction1 = true;   // A = action1 (jump/shoot/thrust)
-      if (gp.buttons[2]?.pressed) gAction2 = true;   // X = action2 (kick/switch/interact)
-      if (gp.buttons[1]?.pressed) gAction2 = true;   // B = also action2
-      if (gp.buttons[9]?.pressed) gStart = true;     // Start
-      if (gp.buttons[8]?.pressed) gStart = true;     // Select/Back
-      // Left stick (deadzone 0.3)
-      if (gp.axes[0] < -0.3) gLeft = true;
-      if (gp.axes[0] > 0.3) gRight = true;
-      if (gp.axes[1] < -0.3) gUp = true;
-      if (gp.axes[1] > 0.3) gDown = true;
-    }
+    try {
+      const gamepads = navigator.getGamepads();
+      for (let i = 0; i < gamepads.length; i++) {
+        const gp = gamepads[i];
+        if (!gp || !gp.connected) continue;
+
+        const btn = (idx: number) => idx < gp.buttons.length && gp.buttons[idx].pressed;
+        const val = (idx: number) => idx < gp.buttons.length ? gp.buttons[idx].value : 0;
+
+        // D-pad (standard mapping: 12=up, 13=down, 14=left, 15=right)
+        if (btn(12)) gUp = true;
+        if (btn(13)) gDown = true;
+        if (btn(14)) gLeft = true;
+        if (btn(15)) gRight = true;
+
+        // Face buttons: A/Cross=0, B/Circle=1, X/Square=2, Y/Triangle=3
+        if (btn(0)) gAction1 = true;    // A = action1
+        if (btn(1)) gAction2 = true;    // B = action2
+        if (btn(2)) gAction2 = true;    // X = also action2
+        if (btn(3)) gAction1 = true;    // Y = also action1
+
+        // Shoulders and triggers
+        if (btn(4)) gAction2 = true;    // LB
+        if (btn(5)) gAction1 = true;    // RB
+        if (val(6) > 0.3) gDown = true; // LT = brake/down
+        if (val(7) > 0.3) gUp = true;   // RT = accelerate/up
+
+        // Start / Select
+        if (btn(9)) gStart = true;      // Start/Menu
+        if (btn(8)) gStart = true;      // Select/View
+
+        // Left stick (deadzone 0.25)
+        if (gp.axes.length >= 2) {
+          if (gp.axes[0] < -0.25) gLeft = true;
+          if (gp.axes[0] > 0.25) gRight = true;
+          if (gp.axes[1] < -0.25) gUp = true;
+          if (gp.axes[1] > 0.25) gDown = true;
+        }
+
+        // Right stick as fallback
+        if (gp.axes.length >= 4) {
+          if (gp.axes[2] < -0.25) gLeft = true;
+          if (gp.axes[2] > 0.25) gRight = true;
+          if (gp.axes[3] < -0.25) gUp = true;
+          if (gp.axes[3] > 0.25) gDown = true;
+        }
+      }
+    } catch (_e) { /* getGamepads may throw in some contexts */ }
 
     // Combine all input sources
     this.state.up = kUp || gUp;

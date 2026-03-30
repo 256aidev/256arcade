@@ -7,12 +7,12 @@ const W = 480;
 const H = 320;
 const PINK = '#ec4899';
 const PINK_DIM = '#9d174d';
-const ROAD_W = 2000;       // road half-width in world units
+const ROAD_W = 1200;       // road half-width in world units
 const SEG_LEN = 200;       // length of each road segment in world Z
-const DRAW_DIST = 150;     // how many segments ahead to draw
+const DRAW_DIST = 200;     // how many segments ahead to draw
 const TOTAL_SEGS = 600;    // total segments per lap
-const CAMERA_H = 1000;     // camera height above road
-const CAMERA_DEPTH = 1 / Math.tan(50 * Math.PI / 180); // FOV ~100deg
+const CAMERA_H = 1500;     // camera height above road
+const CAMERA_DEPTH = 120;  // perspective depth factor
 const MAX_SPEED = 12000;   // world units/sec at 200mph
 const ACCEL = 8000;
 const BRAKE = 16000;
@@ -572,20 +572,18 @@ export default class NitroCircuitGame implements IGame {
 
   // ── Rendering ──────────────────────────────────────────────────────
 
-  private project(p: ProjectedPoint, camX: number, camY: number, camZ: number): void {
-    const tx = p.world.x - camX;
-    const ty = p.world.y - camY;
-    const tz = p.world.z - camZ;
+  private project(p: ProjectedPoint, camX: number, camY: number, _camZ: number): void {
+    const tz = p.world.z;
 
-    if (tz <= 0) {
+    if (tz <= 1) {
       p.scale = 0;
       return;
     }
 
     p.scale = CAMERA_DEPTH / tz;
-    p.screen.x = Math.round(W / 2 + p.scale * tx * W / 2);
-    p.screen.y = Math.round(H / 2 - p.scale * ty * W / 2);
-    p.screen.w = Math.round(p.scale * ROAD_W * W / 2);
+    p.screen.x = Math.round(W / 2 + p.scale * (p.world.x - camX));
+    p.screen.y = Math.round(H / 2 - p.scale * (p.world.y - camY));
+    p.screen.w = Math.round(p.scale * ROAD_W);
   }
 
   private renderRoad(ctx: CanvasRenderingContext2D): void {
