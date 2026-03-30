@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html><head><title>Gamepad Test</title>
+<style>body{background:#111;color:#0f0;font-family:monospace;padding:20px}
+pre{font-size:14px;line-height:1.6}</style></head>
+<body>
+<h1>Gamepad Debug Test</h1>
+<p>Press any button on your controller to connect it.</p>
+<pre id="out">Waiting for gamepad...</pre>
+<script>
+window.addEventListener('gamepadconnected', e => {
+  document.getElementById('out').textContent = 'Connected: ' + e.gamepad.id;
+});
+function poll() {
+  const gps = navigator.getGamepads();
+  let txt = '';
+  for (let i = 0; i < gps.length; i++) {
+    const gp = gps[i];
+    if (!gp) continue;
+    txt += `Gamepad ${i}: ${gp.id}\n`;
+    txt += `Mapping: ${gp.mapping}\n`;
+    txt += `Connected: ${gp.connected}\n`;
+    txt += `Buttons (${gp.buttons.length}):\n`;
+    for (let b = 0; b < gp.buttons.length; b++) {
+      const btn = gp.buttons[b];
+      if (btn.pressed || btn.value > 0.1) {
+        txt += `  [${b}] pressed=${btn.pressed} value=${btn.value.toFixed(2)}\n`;
+      }
+    }
+    txt += `Axes (${gp.axes.length}):\n`;
+    for (let a = 0; a < gp.axes.length; a++) {
+      const v = gp.axes[a];
+      if (Math.abs(v) > 0.1) {
+        txt += `  axis[${a}] = ${v.toFixed(3)}\n`;
+      }
+    }
+    txt += '\n';
+  }
+  if (!txt) txt = 'No gamepad detected. Press a button on your controller.';
+  document.getElementById('out').textContent = txt;
+  requestAnimationFrame(poll);
+}
+poll();
+</script>
+</body></html>

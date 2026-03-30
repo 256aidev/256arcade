@@ -572,166 +572,137 @@ export default class NitroCircuitGame implements IGame {
 
   // ── Rendering ──────────────────────────────────────────────────────
 
-  private project(p: ProjectedPoint, camX: number, camY: number, _camZ: number): void {
-    const tz = p.world.z;
-
-    if (tz <= 1) {
-      p.scale = 0;
-      return;
-    }
-
-    p.scale = CAMERA_DEPTH / tz;
-    p.screen.x = Math.round(W / 2 + p.scale * (p.world.x - camX));
-    p.screen.y = Math.round(H / 2 - p.scale * (p.world.y - camY));
-    p.screen.w = Math.round(p.scale * ROAD_W);
-  }
-
   private renderRoad(ctx: CanvasRenderingContext2D): void {
     const baseSegIdx = Math.floor(this.position / SEG_LEN) % this.segments.length;
-    const basePercent = (this.position % SEG_LEN) / SEG_LEN;
-
-    // Sky gradient
     const isTunnel = baseSegIdx >= 200 && baseSegIdx < 280;
+    const horizon = Math.floor(H * 0.42);
+
+    // Sky
     if (isTunnel) {
       ctx.fillStyle = '#0a0a1e';
       ctx.fillRect(0, 0, W, H);
-      // Neon glow lines at top
-      for (let i = 0; i < 5; i++) {
-        ctx.strokeStyle = `rgba(236, 72, 153, ${0.1 + i * 0.05})`;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, 10 + i * 15);
-        ctx.lineTo(W, 10 + i * 15);
-        ctx.stroke();
-      }
     } else {
-      const skyGrad = ctx.createLinearGradient(0, 0, 0, H / 2);
+      const skyGrad = ctx.createLinearGradient(0, 0, 0, horizon);
       skyGrad.addColorStop(0, '#1a0a2e');
-      skyGrad.addColorStop(0.5, '#2d1b4e');
+      skyGrad.addColorStop(0.6, '#2d1b4e');
       skyGrad.addColorStop(1, '#ff6b35');
       ctx.fillStyle = skyGrad;
-      ctx.fillRect(0, 0, W, H);
+      ctx.fillRect(0, 0, W, horizon);
 
       // Stars
-      ctx.fillStyle = '#ffffff';
-      for (let i = 0; i < 30; i++) {
+      ctx.fillStyle = '#fff';
+      for (let i = 0; i < 25; i++) {
         const sx = (i * 127 + Math.floor(this.totalTime * 2)) % W;
-        const sy = (i * 83) % (H / 3);
-        const blink = Math.sin(this.totalTime * 3 + i) * 0.5 + 0.5;
-        ctx.globalAlpha = blink * 0.8;
+        const sy = (i * 83) % (horizon - 20);
+        ctx.globalAlpha = (Math.sin(this.totalTime * 3 + i) * 0.5 + 0.5) * 0.7;
         ctx.fillRect(sx, sy, 1, 1);
       }
       ctx.globalAlpha = 1;
 
-      // Distant mountains
+      // Mountains
       ctx.fillStyle = '#2a1a3e';
       ctx.beginPath();
-      ctx.moveTo(0, H / 2);
-      for (let x = 0; x <= W; x += 20) {
-        const mh = Math.sin(x * 0.02 + 1) * 25 + Math.sin(x * 0.005) * 40 + 10;
-        ctx.lineTo(x, H / 2 - mh);
+      ctx.moveTo(0, horizon);
+      for (let x = 0; x <= W; x += 15) {
+        const mh = Math.sin(x * 0.015 + 1) * 20 + Math.sin(x * 0.006) * 30 + 15;
+        ctx.lineTo(x, horizon - mh);
       }
-      ctx.lineTo(W, H / 2);
+      ctx.lineTo(W, horizon);
       ctx.closePath();
       ctx.fill();
     }
 
-    // Ground fill below horizon
+    // Ground
     ctx.fillStyle = isTunnel ? '#111122' : '#b89858';
-    ctx.fillRect(0, H / 2, W, H / 2);
+    ctx.fillRect(0, horizon, W, H - horizon);
 
-    // Accumulate curve and hill offsets
-    let curveX = 0;
-    let hillY = 0;
-    const camX = this.playerX * ROAD_W;
-    const camY = CAMERA_H;
-    const camZ = this.position - CAMERA_DEPTH * SEG_LEN;
-
-    // First pass: project all visible segments
-    let maxY = H; // clip from bottom of screen
-
+    // ── Scanline pseudo-3D road ──
+    // Pre-compute curve offsets
+    const curveAccum: number[] = [0];
+    let acc = 0;
     for (let n = 0; n < DRAW_DIST; n++) {
-      const segIdx = (baseSegIdx + n) % this.segments.length;
-      const seg = this.segments[segIdx];
-
-      // Calculate world positions with curve accumulation
-      seg.p1.world.x = curveX - camX;
-      seg.p1.world.y = hillY;
-      seg.p1.world.z = (n === 0 ? (1 - basePercent) : 1) * SEG_LEN + (n > 0 ? (n - 1 + (1 - basePercent)) * SEG_LEN : 0);
-      // Z distance from camera (always positive, start at partial segment offset)
-      const z1 = (n + basePercent) * SEG_LEN;
-      const z2 = (n + 1 + basePercent) * SEG_LEN;
-
-      seg.p1.world.x = curveX - camX;
-      seg.p1.world.y = hillY;
-      seg.p1.world.z = z1 < 1 ? 1 : z1; // clamp to avoid division by zero
-
-      curveX += seg.curve;
-      hillY += seg.hill;
-
-      seg.p2.world.x = curveX - camX;
-      seg.p2.world.y = hillY;
-      seg.p2.world.z = z2;
-
-      this.project(seg.p1, 0, camY, 0);
-      this.project(seg.p2, 0, camY, 0);
+      const si = (baseSegIdx + n) % this.segments.length;
+      acc += this.segments[si].curve;
+      curveAccum.push(acc);
     }
 
-    // Draw segments from far to near
-    for (let n = DRAW_DIST - 1; n >= 0; n--) {
-      const segIdx = (baseSegIdx + n) % this.segments.length;
-      const seg = this.segments[segIdx];
+    // Collect sprite draw commands
+    const spriteDraws: { x: number; y: number; scale: number; type: string; tunnel: boolean }[] = [];
+    const carDraws: { x: number; y: number; scale: number; color: string }[] = [];
 
-      if (seg.p1.scale <= 0 || seg.p2.scale <= 0) continue;
+    // Draw scanlines from bottom to top
+    for (let y = H - 1; y >= horizon; y--) {
+      const screenFrac = (y - horizon) / (H - horizon); // 0=horizon, 1=bottom
+      if (screenFrac < 0.001) break;
 
-      const y1 = seg.p1.screen.y;
-      const y2 = seg.p2.screen.y;
-      const x1 = seg.p1.screen.x;
-      const x2 = seg.p2.screen.x;
-      const w1 = seg.p1.screen.w;
-      const w2 = seg.p2.screen.w;
+      // Z-distance from camera (exponential for perspective)
+      const z = 5.0 / screenFrac;
 
-      // Skip segments fully behind a closer hill
-      if (y1 >= maxY && y2 >= maxY) continue;
+      // Which segment are we in?
+      const segN = Math.floor(z);
+      const segIdx = (baseSegIdx + segN) % this.segments.length;
+
+      // Curve offset — interpolate between segment boundaries
+      const segFrac = z - segN;
+      const c0 = segN < curveAccum.length ? curveAccum[segN] : acc;
+      const c1 = (segN + 1) < curveAccum.length ? curveAccum[segN + 1] : acc;
+      const curveOffset = (c0 + (c1 - c0) * segFrac) * 80;
+
+      // Road center X (curves + player position)
+      const cx = W / 2 + (curveOffset - this.playerX * 180) * screenFrac;
+
+      // Road width (wider at bottom)
+      const roadHW = screenFrac * W * 0.35;
+      const rumbleHW = roadHW * 1.12;
+
+      // Segment colors (alternate)
+      const isLight = segIdx % 2 === 0;
+      const col = isTunnel ? (isLight ? TUNNEL_LIGHT : TUNNEL_DARK) : (isLight ? LIGHT_SEG : DARK_SEG);
 
       // Grass
-      ctx.fillStyle = seg.color.grass;
-      ctx.fillRect(0, y2, W, y1 - y2 + 1);
+      ctx.fillStyle = col.grass;
+      ctx.fillRect(0, y, W, 1);
 
       // Rumble strips
-      this.drawTrapezoid(ctx, x1, y1, w1 * 1.15, x2, y2, w2 * 1.15, seg.color.rumble);
+      ctx.fillStyle = col.rumble;
+      ctx.fillRect(Math.floor(cx - rumbleHW), y, Math.ceil(rumbleHW * 2), 1);
 
-      // Road
-      this.drawTrapezoid(ctx, x1, y1, w1, x2, y2, w2, seg.color.road);
+      // Road surface
+      ctx.fillStyle = col.road;
+      ctx.fillRect(Math.floor(cx - roadHW), y, Math.ceil(roadHW * 2), 1);
 
-      // Lane markings (center dashes)
-      if (seg.color.lane !== seg.color.road) {
-        this.drawTrapezoid(ctx, x1, y1, w1 * 0.02, x2, y2, w2 * 0.02, seg.color.lane);
-        // Side lanes
-        this.drawTrapezoid(ctx, x1 - w1 * 0.48, y1, w1 * 0.02, x2 - w2 * 0.48, y2, w2 * 0.02, seg.color.lane);
-        this.drawTrapezoid(ctx, x1 + w1 * 0.48, y1, w1 * 0.02, x2 + w2 * 0.48, y2, w2 * 0.02, seg.color.lane);
+      // Lane markings
+      if (col.lane !== col.road) {
+        const lw = Math.max(1, Math.floor(roadHW * 0.025));
+        ctx.fillStyle = col.lane;
+        ctx.fillRect(Math.floor(cx - lw / 2), y, lw, 1);
+        ctx.fillRect(Math.floor(cx - roadHW * 0.5 - lw / 2), y, lw, 1);
+        ctx.fillRect(Math.floor(cx + roadHW * 0.5 - lw / 2), y, lw, 1);
       }
+    }
 
-      // Roadside sprites
+    // Draw sprites and AI cars (back to front)
+    for (let n = DRAW_DIST - 1; n >= 1; n--) {
+      const segIdx = (baseSegIdx + n) % this.segments.length;
+      const seg = this.segments[segIdx];
+      const screenFrac = 5.0 / n;
+      if (screenFrac > 1 || screenFrac < 0.01) continue;
+      const y = horizon + screenFrac * (H - horizon);
+      if (y < horizon || y > H) continue;
+
+      const c = n < curveAccum.length ? curveAccum[n] : acc;
+      const cx = W / 2 + (c * 80 - this.playerX * 180) * screenFrac;
+      const roadHW = screenFrac * W * 0.35;
+      const scale = screenFrac * 35;
+
       for (const spr of seg.sprites) {
-        const spriteX = x2 + w2 * spr.offset;
-        const spriteY = y2;
-        const spriteScale = seg.p2.scale * 2000;
-        if (spriteScale < 1) continue;
-
-        this.renderSprite(ctx, spr.type, spriteX, spriteY, spriteScale, segIdx >= 200 && segIdx < 280);
+        if (scale < 0.5) continue;
+        this.renderSprite(ctx, spr.type, cx + roadHW * spr.offset, y, scale, segIdx >= 200 && segIdx < 280);
       }
-
-      // AI cars on this segment
       for (const car of seg.cars) {
-        const carScreenX = x2 + w2 * car.offset;
-        const carScreenY = y2;
-        const carScale = seg.p2.scale * 2500;
-        if (carScale < 2) continue;
-        this.renderAICar(ctx, carScreenX, carScreenY, carScale, car.color);
+        if (scale < 1) continue;
+        this.renderAICar(ctx, cx + roadHW * car.offset * 0.8, y, scale * 0.8, car.color);
       }
-
-      if (y2 < maxY) maxY = y2;
     }
 
     // Player car
@@ -739,24 +710,22 @@ export default class NitroCircuitGame implements IGame {
 
     // Particles
     for (const p of this.particles) {
-      const alpha = p.life / p.maxLife;
-      ctx.globalAlpha = alpha;
+      ctx.globalAlpha = p.life / p.maxLife;
       ctx.fillStyle = p.color;
       ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
     }
     ctx.globalAlpha = 1;
 
-    // Speed lines at high speed
+    // Speed lines
     const speedRatio = this.speed / MAX_SPEED;
     if (speedRatio > 0.6) {
-      const lineAlpha = (speedRatio - 0.6) * 2;
-      ctx.strokeStyle = `rgba(255,255,255,${lineAlpha * 0.3})`;
+      ctx.strokeStyle = `rgba(255,255,255,${(speedRatio - 0.6) * 0.6})`;
       ctx.lineWidth = 1;
       for (let i = 0; i < 8; i++) {
         const lx = randInt(0, W);
         ctx.beginPath();
-        ctx.moveTo(lx, H * 0.4);
-        ctx.lineTo(lx + (lx - W / 2) * 0.2, H);
+        ctx.moveTo(lx, horizon);
+        ctx.lineTo(lx + (lx - W / 2) * 0.3, H);
         ctx.stroke();
       }
     }
