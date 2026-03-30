@@ -22,10 +22,28 @@ export function GameWrapper({ gameId, onBack }: Props) {
   const [highScore, setHighScore] = useState(0);
   const [state, setState] = useState<string>('loading');
   const [muted, setMuted] = useState(audio.isMuted());
+  const [gamepadConnected, setGamepadConnected] = useState(false);
 
   const gameInfo = GAMES.find(g => g.id === gameId);
 
+  // Keep focus on the game container so keyboard works
+  const refocusGame = () => {
+    setTimeout(() => containerRef.current?.focus(), 0);
+  };
+
   useEffect(() => {
+    // Listen for gamepad connections
+    const onGpConnect = () => setGamepadConnected(true);
+    const onGpDisconnect = () => setGamepadConnected(false);
+    window.addEventListener('gamepadconnected', onGpConnect);
+    window.addEventListener('gamepaddisconnected', onGpDisconnect);
+
+    // Check if already connected
+    const gps = navigator.getGamepads ? navigator.getGamepads() : [];
+    for (const gp of gps) {
+      if (gp) { setGamepadConnected(true); break; }
+    }
+
     if (!containerRef.current) return;
     let destroyed = false;
 
@@ -40,6 +58,11 @@ export function GameWrapper({ gameId, onBack }: Props) {
       const input = new InputManager();
       const game = new mod.default();
 
+      // Make canvas focusable and focus it
+      cm.canvas.tabIndex = 1;
+      cm.canvas.style.outline = 'none';
+      cm.canvas.focus();
+
       canvasRef.current = cm;
       inputRef.current = input;
       gameRef.current = game;
@@ -49,6 +72,7 @@ export function GameWrapper({ gameId, onBack }: Props) {
       if (destroyed) return;
 
       setHighScore(getTopScore(gameId));
+      setState('menu');
 
       const loop = new GameLoop(
         (dt) => {
@@ -78,6 +102,8 @@ export function GameWrapper({ gameId, onBack }: Props) {
       inputRef.current?.detach();
       canvasRef.current?.destroy();
       gameRef.current?.destroy();
+      window.removeEventListener('gamepadconnected', onGpConnect);
+      window.removeEventListener('gamepaddisconnected', onGpDisconnect);
     };
   }, [gameId]);
 
@@ -85,15 +111,24 @@ export function GameWrapper({ gameId, onBack }: Props) {
     <div className="h-full flex flex-col" style={{ background: '#000' }}>
       <div className="flex items-center justify-between px-3 py-2" style={{ background: '#0a0a1a' }}>
         <button
-          onClick={onBack}
+          onClick={(e) => { e.currentTarget.blur(); onBack(); }}
+          onMouseDown={(e) => e.preventDefault()}
           className="text-sm px-3 py-1 rounded cursor-pointer"
           style={{ background: '#1a1a3a', color: '#6a6a8a' }}
+          tabIndex={-1}
         >
           &larr; Back
         </button>
-        <span className="text-sm font-bold" style={{ color: gameInfo?.color || '#fff' }}>
-          {gameInfo?.name || gameId}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-bold" style={{ color: gameInfo?.color || '#fff' }}>
+            {gameInfo?.name || gameId}
+          </span>
+          {gamepadConnected && (
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: '#22c55e22', color: '#22c55e' }}>
+              🎮
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-3">
           <span className="text-xs" style={{ color: '#6a6a8a' }}>
             HI: {highScore.toLocaleString()}
@@ -102,15 +137,23 @@ export function GameWrapper({ gameId, onBack }: Props) {
             {score.toLocaleString()}
           </span>
           <button
-            onClick={() => setMuted(audio.toggleMute())}
+            onClick={() => { setMuted(audio.toggleMute()); refocusGame(); }}
+            onMouseDown={(e) => e.preventDefault()}
             className="text-sm px-2 py-1 rounded cursor-pointer"
             style={{ background: '#1a1a3a', color: '#6a6a8a' }}
+            tabIndex={-1}
           >
             {muted ? '🔇' : '🔊'}
           </button>
         </div>
       </div>
-      <div ref={containerRef} className="flex-1 flex items-center justify-center overflow-hidden">
+      <div
+        ref={containerRef}
+        className="flex-1 flex items-center justify-center overflow-hidden"
+        onClick={refocusGame}
+        tabIndex={0}
+        style={{ outline: 'none' }}
+      >
         {state === 'loading' && (
           <div className="text-center" style={{ color: '#6a6a8a' }}>Loading...</div>
         )}
@@ -123,12 +166,7 @@ export function GameWrapper({ gameId, onBack }: Props) {
             <p className="text-3xl font-bold mb-4" style={{ color: '#00ff88' }}>{score.toLocaleString()}</p>
             <div className="flex gap-3">
               <button
-                onClick={() => {
-                  gameRef.current?.destroy();
-                  canvasRef.current?.destroy();
-                  // Force remount by toggling
-                  onBack();
-                }}
+                onClick={onBack}
                 className="px-4 py-2 rounded cursor-pointer"
                 style={{ background: '#1a1a3a', color: '#e0e0ff' }}
               >
